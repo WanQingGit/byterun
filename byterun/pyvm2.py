@@ -165,19 +165,16 @@ class VirtualMachine(object):
             self.last_exception = exctype, value, tb
 
     def parse_byte_and_args(self):
-        """ Parse 1 - 3 bytes of bytecode into
-        an instruction and optionally arguments."""
         f = self.frame
         opoffset = f.f_lasti
-        byteCode = byteint(f.f_code.co_code[opoffset])
+        currentOp = f.opcodes[opoffset]
+        byteCode = currentOp.opcode
         f.f_lasti += 1
-        byteName = dis.opname[byteCode]
+        byteName = currentOp.opname
         arg = None
         arguments = []
         if byteCode >= dis.HAVE_ARGUMENT:
-            arg = f.f_code.co_code[f.f_lasti:f.f_lasti+2]
-            f.f_lasti += 2
-            intArg = byteint(arg[0]) + (byteint(arg[1]) << 8)
+            intArg = currentOp.arg
             if byteCode in dis.hasconst:
                 arg = f.f_code.co_consts[intArg]
             elif byteCode in dis.hasfree:
@@ -189,9 +186,9 @@ class VirtualMachine(object):
             elif byteCode in dis.hasname:
                 arg = f.f_code.co_names[intArg]
             elif byteCode in dis.hasjrel:
-                arg = f.f_lasti + intArg
+                arg = f.f_lasti + intArg//2
             elif byteCode in dis.hasjabs:
-                arg = intArg
+                arg = intArg//2
             elif byteCode in dis.haslocal:
                 arg = f.f_code.co_varnames[intArg]
             else:
