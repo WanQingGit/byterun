@@ -72,6 +72,15 @@ class Function(object):
             callargs = {".0": args[0]}
         else:
             callargs = inspect.getcallargs(self._func, *args, **kwargs)
+            # fix for getting tuples for default kwarg values
+            counter = 0
+            for kw, value in callargs.items():
+                # ignore positional arguments
+                if counter >= len(args):
+                    if kw not in kwargs:
+                        callargs[kw] = value[0]
+                counter += 1
+
         frame = self._vm.make_frame(
             self.func_code, callargs, self.func_globals, {}, self.func_closure
         )
