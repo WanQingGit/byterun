@@ -581,16 +581,14 @@ class VirtualMachine(object):
         # call syntax. The stack item at position count + 1 should be the
         # corresponding callable f.
         elts = self.popn(count)
-        func = self.pop()
-        lst = [e for e in l for l in elts]
-        return self.call_function(0, lst, {})
+        self.push(tuple(e for l in elts for e in l))
 
     def byte_BUILD_TUPLE_UNPACK(self, count):
         # Pops count iterables from the stack, joins them in a single tuple,
         # and pushes the result. Implements iterable unpacking in
         # tuple displays (*x, *y, *z).
         elts = self.popn(count)
-        self.push(tuple(e for e in l for l in elts))
+        self.push(tuple(e for l in elts for e in l))
 
     def byte_BUILD_TUPLE(self, count):
         elts = self.popn(count)
@@ -900,6 +898,42 @@ class VirtualMachine(object):
             self.push_block('finally', dest)
         self.push(ctxmgr_obj)
 
+    def byte_WITH_CLEANUP_START(self):
+        u = self.top()
+        v = None
+        w = None
+        if u is None:
+            exit_method = self.pop(1)
+        elif isinstance(u, str):
+            if u in {'return', 'continue'}:
+                exit_method = self.pop(2)
+            else:
+                exit_method = self.pop(1)
+        else:
+        #elif isinstance(u, BaseException):
+            w, v, u = self.popn(3)
+            tp, exc, tb = self.popn(3)
+            exit_method = self.pop()
+            self.push(tp, exc, tb)
+            self.push(None)
+            self.push(w, v, u)
+            block = self.pop_block()
+            assert block.type == 'except-handler'
+            self.push_block(block.type, block.handler, block.level-1)
+
+        res = exit_method(u, v, w)
+        self.push(u)
+        self.push(res)
+
+    def byte_WITH_CLEANUP_FINISH(self):
+        res = self.pop()
+        u = self.pop()
+        if u is not None and isinstance(u, BaseException) and res:
+            self.push("silenced")
+        #else:
+        #    self.push(res)
+        #    self.push(u)
+
     def byte_WITH_CLEANUP(self):
         # The code here does some weird stack manipulation: the exit function
         # is buried in the stack, and where depends on what's on top of it.
@@ -949,9 +983,12 @@ class VirtualMachine(object):
         else:
             name = None
         code = self.pop()
-        defaults = self.popn(argc)
+        closure = self.pop() if (argc & 0x8) else None
+        ann = self.pop() if (argc & 0x4) else None
+        kwdefaults = self.pop() if (argc & 0x2) else None
+        defaults = self.pop() if (argc & 0x1) else None
         globs = self.frame.f_globals
-        fn = Function(name, code, globs, defaults, None, self)
+        fn = Function(name, code, globs, defaults, kwdefaults, closure, self)
         self.push(fn)
 
     def byte_LOAD_CLOSURE(self, name):
@@ -966,19 +1003,45 @@ class VirtualMachine(object):
         closure, code = self.popn(2)
         defaults = self.popn(argc)
         globs = self.frame.f_globals
-        fn = Function(name, code, globs, defaults, closure, self)
+        fn = Function(name, code, globs, defaults, None, closure, self)
         self.push(fn)
 
+    def byte_CALL_FUNCTION_EX(self, arg):
+        # Calls a function. The lowest bit of flags indicates whether the
+        # var-keyword argument is placed at the top of the stack. Below
+        # the var-keyword argument, the var-positional argument is on the
+        # stack. Below the arguments, the function object to call is placed.
+        # Pops all function arguments, and the function itself off the stack,
+        # and pushes the return value.
+        # Note that this opcode pops at most three items from the stack.
+        #Var-positional and var-keyword arguments are packed by
+        #BUILD_TUPLE_UNPACK_WITH_CALL and BUILD_MAP_UNPACK_WITH_CALL.
+        # new in 3.6
+        varkw = self.pop() if (arg & 0x1) else {}
+        varpos = self.pop()
+        return self.call_function(0, varpos, varkw)
+
     def byte_CALL_FUNCTION(self, arg):
+        # Calls a function. argc indicates the number of positional arguments.
+        # The positional arguments are on the stack, with the right-most
+        # argument on top. Below the arguments, the function object to call is
+        # on the stack. Pops all function arguments, and the function itself
+        # off the stack, and pushes the return value.
+        # 3.6: Only used for calls with positional args
         return self.call_function(arg, [], {})
 
     def byte_CALL_FUNCTION_VAR(self, arg):
         args = self.pop()
         return self.call_function(arg, args, {})
 
-    def byte_CALL_FUNCTION_KW(self, arg):
-        kwargs = self.pop()
-        return self.call_function(arg, [], kwargs)
+    def byte_CALL_FUNCTION_KW(self, argc):
+        kwargnames = self.pop()
+        lkwargs = len(kwargnames)
+        kwargs = self.popn(lkwargs)
+        arg = argc - lkwargs
+        # changed in 3.6: keyword arguments are packed in a tuple instead
+        # of a dict. argc indicates total number of args.
+        return self.call_function(arg, [], dict(zip(kwargnames, kwargs)))
 
     def byte_CALL_FUNCTION_VAR_KW(self, arg):
         args, kwargs = self.popn(2)
