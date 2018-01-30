@@ -173,7 +173,16 @@ class VirtualMachine(object):
         byteName = currentOp.opname
         arg = None
         arguments = []
-        if byteCode >= dis.HAVE_ARGUMENT:
+        if byteCode == dis.EXTENDED_ARG:
+            # Prefixes any opcode which has an argument too big to fit into the
+            # default two bytes. ext holds two additional bytes which, taken
+            # together with the subsequent opcode’s argument, comprise a
+            # four-byte argument, ext being the two most-significant bytes.
+            # We simply ignore the EXTENDED_ARG because that calculation
+            # is already done by dis, and stored in next currentOp.
+            # Lib/dis.py:_unpack_opargs
+            return self.parse_byte_and_args()
+        elif byteCode >= dis.HAVE_ARGUMENT:
             intArg = currentOp.arg
             if byteCode in dis.hasconst:
                 arg = f.f_code.co_consts[intArg]
