@@ -26,27 +26,28 @@ class Function(object):
     __slots__ = [
         'func_code', 'func_name', 'func_defaults', 'func_globals',
         'func_dict', 'func_closure',
-        '__name__', '__dict__', '__doc__',
+        '__name__', '__globals__', '__closure__', '__dict__', '__doc__',
         '_vm', '_func',
     ]
 
-    def __init__(self, name, code, globs, defaults, closure, vm):
+    def __init__(self, name, code, globs, defaults, kwdefaults, closure, vm):
         self._vm = vm
         self.func_code = code
         self.func_name = self.__name__ = name or code.co_name
-        self.func_defaults = tuple(defaults)
-        self.func_globals = globs
+        self.func_defaults = self.__defaults__ = defaults
+        self.func_globals = self.__globals__ = globs
         self.__dict__ = {}
-        self.func_closure = closure
+        self.func_closure = self.__closure__ = closure
         self.__doc__ = code.co_consts[0] if code.co_consts else None
 
         # Sometimes, we need a real Python function.  This is for that.
         kw = {
+            'name': self.func_name,
             'argdefs': self.func_defaults,
+            'closure': tuple(make_cell(0) for _ in closure) if closure else None
         }
-        if closure:
-            kw['closure'] = tuple(make_cell(0) for _ in closure)
         self._func = types.FunctionType(code, globs, **kw)
+
 
     def __repr__(self):         # pragma: no cover
         return '<Function %s at 0x%08x>' % (
