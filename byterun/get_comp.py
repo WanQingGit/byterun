@@ -40,7 +40,7 @@ class GetComparisons(pyvm2.VirtualMachine):
 
 
     def byte_COMPARE_OP(self, opnum):
-        for arg in self.args:
+        # for arg in self.args:
             
         print(str(self.COMPARE_OPERATORS[opnum]), self.topn(2))
         pyvm2.VirtualMachine.byte_COMPARE_OP(self, opnum)
