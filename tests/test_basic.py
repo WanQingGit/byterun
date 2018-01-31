@@ -23,7 +23,7 @@ class TestIt(vmtest.VmTestCase):
                     xyz+=1
                     print("Midst:",xyz)
 
-                
+
                 print "Pre:",xyz
                 abc()
                 print "Post:",xyz
@@ -39,7 +39,7 @@ class TestIt(vmtest.VmTestCase):
                     xyz+=1
                     print("Midst:",xyz)
 
-                
+
                 print("Pre:",xyz)
                 abc()
                 print("Post:",xyz)

@@ -7,6 +7,7 @@ import types
 import dis
 
 import six
+import sys
 
 PY3, PY2 = six.PY3, not six.PY3
 
@@ -34,8 +35,10 @@ class Function(object):
         self._vm = vm
         self.func_code = code
         self.func_name = self.__name__ = name or code.co_name
-        self.func_defaults = self.__defaults__ = defaults
-        self.func_globals = self.__globals__ = globs
+        self.func_defaults = defaults \
+                if PY3 and sys.version_info.minor >= 6 else tuple(defaults)
+        self.func_globals = globs
+        self.func_locals = self._vm.frame.f_locals
         self.__dict__ = {}
         self.func_closure = self.__closure__ = closure
         self.__doc__ = code.co_consts[0] if code.co_consts else None
@@ -150,7 +153,8 @@ Block = collections.namedtuple("Block", "type, handler, level")
 class Frame(object):
     def __init__(self, f_code, f_globals, f_locals, f_closure, f_back):
         self.f_code = f_code
-        self.opcodes = list(dis.get_instructions(self.f_code))
+        self.py36_opcodes = list(dis.get_instructions(self.f_code)) \
+            if six.PY3 and sys.version_info.minor >= 6 else None
         self.f_globals = f_globals
         self.f_locals = f_locals
         self.f_back = f_back

@@ -16,7 +16,7 @@ from six.moves import reprlib
 
 PY3, PY2 = six.PY3, not six.PY3
 
-from pyobj import Frame, Block, Method, Function, Generator, Cell
+from .pyobj import Frame, Block, Method, Function, Generator, Cell
 
 log = logging.getLogger(__name__)
 
@@ -166,15 +166,22 @@ class VirtualMachine(object):
             self.last_exception = exctype, value, tb
 
     def parse_byte_and_args(self):
+        """ Parse 1 - 3 bytes of bytecode into
+        an instruction and optionally arguments.
+        In Python3.6 the format is 2 bytes per instruction."""
         f = self.frame
         opoffset = f.f_lasti
-        currentOp = f.opcodes[opoffset]
-        byteCode = currentOp.opcode
+        if f.py36_opcodes:
+            currentOp = f.py36_opcodes[opoffset]
+            byteCode = currentOp.opcode
+            byteName = currentOp.opname
+        else:
+            byteCode = byteint(f.f_code.co_code[opoffset])
+            byteName = dis.opname[byteCode]
         f.f_lasti += 1
-        byteName = currentOp.opname
         arg = None
         arguments = []
-        if byteCode == dis.EXTENDED_ARG:
+        if f.py36_opcodes and byteCode == dis.EXTENDED_ARG:
             # Prefixes any opcode which has an argument too big to fit into the
             # default two bytes. ext holds two additional bytes which, taken
             # together with the subsequent opcode’s argument, comprise a
@@ -183,8 +190,13 @@ class VirtualMachine(object):
             # is already done by dis, and stored in next currentOp.
             # Lib/dis.py:_unpack_opargs
             return self.parse_byte_and_args()
-        elif byteCode >= dis.HAVE_ARGUMENT:
-            intArg = currentOp.arg
+        if byteCode >= dis.HAVE_ARGUMENT:
+            if f.py36_opcodes:
+                intArg = currentOp.arg
+            else:
+                arg = f.f_code.co_code[f.f_lasti:f.f_lasti+2]
+                f.f_lasti += 2
+                intArg = byteint(arg[0]) + (byteint(arg[1]) << 8)
             if byteCode in dis.hasconst:
                 arg = f.f_code.co_consts[intArg]
             elif byteCode in dis.hasfree:
@@ -196,9 +208,15 @@ class VirtualMachine(object):
             elif byteCode in dis.hasname:
                 arg = f.f_code.co_names[intArg]
             elif byteCode in dis.hasjrel:
-                arg = f.f_lasti + intArg//2
+                if f.py36_opcodes:
+                    arg = f.f_lasti + intArg//2
+                else:
+                    arg = f.f_lasti + intArg
             elif byteCode in dis.hasjabs:
-                arg = intArg//2
+                if f.py36_opcodes:
+                    arg = intArg//2
+                else:
+                    arg = intArg
             elif byteCode in dis.haslocal:
                 arg = f.f_code.co_varnames[intArg]
             else:
@@ -613,7 +631,11 @@ class VirtualMachine(object):
         self.push(kvs)
 
     def byte_BUILD_MAP(self, count):
-        # Pushes a new dictionary on to stack. Pop 2*count items so that
+        # Pushes a new dictionary on to stack.
+        if not(six.PY3 and sys.version_info.minor >= 5):
+            self.push({})
+            return
+        # Pop 2*count items so that
         # dictionary holds count entries: {..., TOS3: TOS2, TOS1:TOS}
         # updated in version 3.5
         kvs = {}
@@ -981,14 +1003,21 @@ class VirtualMachine(object):
         if PY3:
             name = self.pop()
         else:
+            # Pushes a new function object on the stack. TOS is the code
+            # associated with the function. The function object is defined to
+            # have argc default parameters, which are found below TOS.
             name = None
         code = self.pop()
-        closure = self.pop() if (argc & 0x8) else None
-        ann = self.pop() if (argc & 0x4) else None
-        kwdefaults = self.pop() if (argc & 0x2) else None
-        defaults = self.pop() if (argc & 0x1) else None
         globs = self.frame.f_globals
-        fn = Function(name, code, globs, defaults, kwdefaults, closure, self)
+        if PY3 and sys.version_info.minor >= 6:
+            closure = self.pop() if (argc & 0x8) else None
+            ann = self.pop() if (argc & 0x4) else None
+            kwdefaults = self.pop() if (argc & 0x2) else None
+            defaults = self.pop() if (argc & 0x1) else None
+            fn = Function(name, code, globs, defaults, kwdefaults, closure, self)
+        else:
+            defaults = self.popn(argc)
+            fn = Function(name, code, globs, defaults, None, None, self)
         self.push(fn)
 
     def byte_LOAD_CLOSURE(self, name):
@@ -1035,12 +1064,15 @@ class VirtualMachine(object):
         return self.call_function(arg, args, {})
 
     def byte_CALL_FUNCTION_KW(self, argc):
+        if not(six.PY3 and sys.version_info.minor >= 6):
+            kwargs = self.pop()
+            return self.call_function(arg, [], kwargs)
+        # changed in 3.6: keyword arguments are packed in a tuple instead
+        # of a dict. argc indicates total number of args.
         kwargnames = self.pop()
         lkwargs = len(kwargnames)
         kwargs = self.popn(lkwargs)
         arg = argc - lkwargs
-        # changed in 3.6: keyword arguments are packed in a tuple instead
-        # of a dict. argc indicates total number of args.
         return self.call_function(arg, [], dict(zip(kwargnames, kwargs)))
 
     def byte_CALL_FUNCTION_VAR_KW(self, arg):
