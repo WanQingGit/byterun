@@ -3,7 +3,7 @@
 import argparse
 import logging
 
-from . import execfile
+import execfile
 
 parser = argparse.ArgumentParser(
     prog="byterun",

@@ -5,8 +5,8 @@ import os
 import sys
 import tokenize
 
-from .pyvm2 import VirtualMachine
-
+# from pyvm2 import VirtualMachine
+from get_comp import GetComparisons
 
 # This code is ripped off from coverage.py.  Define things it expects.
 try:
@@ -20,7 +20,8 @@ NoSource = Exception
 
 
 def exec_code_object(code, env):
-    vm = VirtualMachine()
+    # vm = VirtualMachine()
+    vm = GetComparisons()
     vm.run_code(code, f_globals=env)
 
 
