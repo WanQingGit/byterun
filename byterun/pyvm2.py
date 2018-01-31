@@ -16,7 +16,7 @@ from six.moves import reprlib
 
 PY3, PY2 = six.PY3, not six.PY3
 
-from .pyobj import Frame, Block, Method, Function, Generator, Cell
+from pyobj import Frame, Block, Method, Function, Generator, Cell
 
 log = logging.getLogger(__name__)
 

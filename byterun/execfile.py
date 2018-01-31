@@ -22,7 +22,42 @@ NoSource = Exception
 def exec_code_object(code, env):
     # vm = VirtualMachine()
     vm = GetComparisons()
-    vm.run_code(code, f_globals=env)
+    # TODO: a fast hack to get the loop running, some sophisticated run loop will be added later
+    last_input = "qiaup98bsdf"
+    next_input = ""
+    expansion_list = list()
+    explored = set()
+    with open("outputs.txt","w") as outputs:
+        for i in range(0,1000):
+            print("###########################################################################")
+            # we might run into exceptions since we produce invalid inputs
+            # we catch those exceptions and produce a new input based on the gained knowledge throught the
+            # execution
+            print(next_input)
+            try:
+                vm.run_code(code, f_globals=env)
+            except Exception:
+                pass
+            # for t in vm.trace:
+            #     print(t)
+            next_inputs = vm.get_next_inputs()
+            for next_input in next_inputs:
+                new_node = (last_input, next_input)
+                if new_node not in explored:
+                    expansion_list.append(new_node)
+            if expansion_list == []:
+                return
+            print(next_inputs)
+            (last_input, next_input) = expansion_list[0]
+            expansion_list = expansion_list[1:]
+            outputs.write(next_input + "\n")
+            explored.add((last_input, next_input))
+            vm.clean([next_input])
+            sys.argv[1] = next_input
+
+# TODO: we need a more sophisicated restart function in future
+def restart():
+    return "qiaup98bsdf"
 
 
 # from coverage.py:
