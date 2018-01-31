@@ -17,6 +17,7 @@ from six.moves import reprlib
 PY3, PY2 = six.PY3, not six.PY3
 
 from .pyobj import Frame, Block, Method, Function, Generator, Cell
+from .modules import import_python_module
 
 log = logging.getLogger(__name__)
 
@@ -1105,6 +1106,11 @@ class VirtualMachine(object):
         retval = func(*posargs, **namedargs)
         self.push(retval)
 
+    def import_module(self, m, fromList, level):
+        f = self.frame
+        res = import_python_module(m, f.f_globals, f.f_locals, fromList, level)
+        self.push(res)
+
     def byte_RETURN_VALUE(self):
         self.return_value = self.pop()
         if self.frame.generator:
@@ -1141,10 +1147,7 @@ class VirtualMachine(object):
 
     def byte_IMPORT_NAME(self, name):
         level, fromlist = self.popn(2)
-        frame = self.frame
-        self.push(
-            __import__(name, frame.f_globals, frame.f_locals, fromlist, level)
-        )
+        self.import_module(name, fromlist, level)
 
     def byte_IMPORT_STAR(self):
         # TODO: this doesn't use __all__ properly.
