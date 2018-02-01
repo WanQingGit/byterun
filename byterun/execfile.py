@@ -8,7 +8,7 @@ import queue
 import string
 
 # from pyvm2 import VirtualMachine
-from get_comp import GetComparisons
+from get_comp import GetComparisons, Operator
 
 # This code is ripped off from coverage.py.  Define things it expects.
 try:
@@ -51,6 +51,8 @@ def exec_code_object(code, env):
                 if next_input not in explored:
                     new_node = (calc_heuristic(expansion_counter, vm, next_input), last_input, next_input)
                     expansion_list.put(new_node)
+                    # if an input was already generated, there is no need to explore it again
+                    explored.add(next_input)
             if expansion_list.empty():
                 return
             (_, last_input, next_input) = expansion_list.get_nowait()
@@ -83,7 +85,20 @@ def calc_heuristic(expansion_counter, vm, input_string):
     # prefer inputs with many control characters (non-alpha nums)
     # result -= sum((not c.isalnum() and c not in {"\n", "\t", "\r", "\f"}) for c in input_string)
 
+    # the number of successful comparisons should directly correlate with how good an input is
+    # result -= get_successful_equality_comparisons(vm.trace)
+
     return result
+
+
+# get the number of successful equality comparisons in a trace
+def get_successful_equality_comparisons(trace):
+    counter = 0
+    for t in trace:
+        if t[0] == Operator.EQ:
+            if t[1][0] == t[1][1]:
+               counter += 1
+    return counter
 
 
 
