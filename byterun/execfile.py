@@ -4,9 +4,10 @@ import imp
 import os
 import sys
 import tokenize
+import queue
+import string
 
-from .pyvm2 import VirtualMachine
-
+from .get_comp import GetComparisons, Operator
 
 # This code is ripped off from coverage.py.  Define things it expects.
 try:
@@ -20,8 +21,89 @@ NoSource = Exception
 
 
 def exec_code_object(code, env):
-    vm = VirtualMachine()
-    vm.run_code(code, f_globals=env)
+    # vm = VirtualMachine()
+    vm = GetComparisons()
+    # TODO: a fast hack to get the loop running, some sophisticated run loop will be added later
+    last_input = "qiaup98bsdf"
+    next_input = ""
+    expansion_list = queue.PriorityQueue()
+    explored = set()
+    expansion_counter = 0
+    with open("outputs.txt","w") as outputs:
+        for i in range(0,3000000):
+            expansion_counter += 1
+            print("#############")
+            # we might run into exceptions since we produce invalid inputs
+            # we catch those exceptions and produce a new input based on the gained knowledge through the
+            # execution
+            print(repr(next_input))
+            try:
+                vm.run_code(code, f_globals=env)
+            except Exception:
+                pass
+            # for t in vm.trace:
+            #     print(t)
+            next_inputs = vm.get_next_inputs()
+            for next_input in next_inputs:
+                next_input = ''.join(filter(lambda x: x in string.printable, next_input))
+                # do not reevaluate inputs that we have already seen
+                if next_input not in explored:
+                    new_node = (calc_heuristic(expansion_counter, vm, next_input), last_input, next_input)
+                    expansion_list.put(new_node)
+                    # if an input was already generated, there is no need to explore it again
+                    explored.add(next_input)
+            if expansion_list.empty():
+                return
+            (_, last_input, next_input) = expansion_list.get_nowait()
+            # print(next_inputs)
+            # print(expansion_list)
+            outputs.write(next_input + "\n")
+            explored.add(next_input)
+            vm.clean([next_input])
+            sys.argv[1] = next_input
+
+
+def calc_heuristic(expansion_counter, vm, input_string):
+    result = sys.maxsize // 2
+
+    # earlier expansions should be prioritized
+    # inputs that are created based on later comparisons might be deeper down in the program and should therefore
+    # be preferred
+    result += expansion_counter
+    # longer traces indicate more execution, so likely the input was more correct
+    # result -= len(vm.trace)
+    # inputs that do not produce an exception might be correct, so we prefer it by some constant
+    # if vm.last_exception is None:
+    #     result -= 20
+    # shorter inputs are preferred at the moment
+    # result += len(input_string)
+
+    # a higher levensthein distance is better
+    # result -= len(set("qiaup98bsdf") & set(input_string)) * 4
+
+    # prefer inputs with many control characters (non-alpha nums)
+    # result -= sum((not c.isalnum() and c not in {"\n", "\t", "\r", "\f"}) for c in input_string)
+
+    # the number of successful comparisons should directly correlate with how good an input is
+    # result -= get_successful_equality_comparisons(vm.trace)
+
+    return result
+
+
+# get the number of successful equality comparisons in a trace
+def get_successful_equality_comparisons(trace):
+    counter = 0
+    for t in trace:
+        if t[0] == Operator.EQ:
+            if t[1][0] == t[1][1]:
+               counter += 1
+    return counter
+
+
+
+# TODO: we need a more sophisicated restart function in future
+def restart():
+    return "qiaup98bsdf"
 
 
 # from coverage.py:
