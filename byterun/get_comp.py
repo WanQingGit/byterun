@@ -111,11 +111,11 @@ class GetComparisons(pyvm2.VirtualMachine):
         current = self.args[0]
         for t in self.trace:
             # a currently likely unsound method to avoid changes of the same operator again
-            if str(t) in self.changed:
-                continue
-            if t[0] == Operator.EQ:
+            # if str(t) in self.changed:
+            #     continue
+            if t[0] == Operator.EQ or t[0] == Operator.NE:
                 next_inputs += self.eq_next_inputs(t, current)
-            elif t[0] == Operator.IN:
+            elif t[0] == Operator.IN or t[0] == Operator.NOT_IN:
                 next_inputs += self.in_next_inputs(t, current)
                 # if the comparison was successful we do not need to change anything
                 # TODO: This does not hold in general, in future we might need to consider succ. comp. as leading into an error
