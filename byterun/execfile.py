@@ -87,6 +87,11 @@ def calc_heuristic(expansion_counter, vm, input_string):
     # the number of successful comparisons should directly correlate with how good an input is
     # result -= get_successful_equality_comparisons(vm.trace)
 
+    # check if new comparisons where explored with this input, if yes, it might be worth checking this input in more
+    # detail
+    if vm.new_comp_seen:
+        result -= 20
+
     return result
 
 

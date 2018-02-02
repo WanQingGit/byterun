@@ -45,7 +45,10 @@ class GetComparisons(VirtualMachine):
         self.functions()
 
         self.trace = list()
-        self.changed = set()
+        # stores the lines seen throughout all executions, is not cleared after one execution
+        self.lines_seen = set()
+        # TODO it might also be worth storing the new comps and exploring inputs based on those new comps first
+        self.new_comp_seen = False
 
     def clean(self, new_args):
         self.args = new_args
@@ -55,6 +58,8 @@ class GetComparisons(VirtualMachine):
         self.return_value = None
         self.last_exception = None
         self.frames = []
+
+        self.new_comp_seen = False
 
 
     def topn(self, n):
@@ -71,6 +76,7 @@ class GetComparisons(VirtualMachine):
 
 
     def byte_COMPARE_OP(self, opnum):
+        self.line_already_seen()
         operands = self.topn(2)
         for arg in self.args:
             if ((str(operands[0]) != '') and str(operands[0]) in arg) \
@@ -81,6 +87,14 @@ class GetComparisons(VirtualMachine):
         return VirtualMachine.byte_COMPARE_OP(self, opnum)
 
 
+    def line_already_seen(self):
+        line = (self.frame.f_lineno, self.frame.f_lasti)
+        if line not in self.lines_seen:
+            self.new_comp_seen = True
+            self.lines_seen.add(line)
+
+
+
     def function_watched(self, function_string):
         for f in self.functions:
             if f in function_string:
@@ -89,6 +103,7 @@ class GetComparisons(VirtualMachine):
 
 
     def byte_CALL_FUNCTION(self, arg):
+        self.line_already_seen()
         args = self.topn(arg + 1)
         if self.function_watched(str(args[0])):
             self.trace.append((Functions(11), [str(self.load_from)] + args))
@@ -97,6 +112,7 @@ class GetComparisons(VirtualMachine):
 
 
     def byte_LOAD_ATTR(self, attr):
+        self.line_already_seen()
         obj = self.top()
         self.load_from = obj
 
@@ -120,7 +136,8 @@ class GetComparisons(VirtualMachine):
                 # if the comparison was successful we do not need to change anything
                 # TODO: This does not hold in general, in future we might need to consider succ. comp. as leading into an error
 
-        return next_inputs
+        #reverse list before returning, s.t. the last comparison/replacement will be checked first
+        return reversed(next_inputs)
 
 
     def eq_next_inputs(self, trace_line, current):
@@ -130,7 +147,7 @@ class GetComparisons(VirtualMachine):
         cmp1_str = str(compare[1])
         if compare[0] == compare[1]:
             return []
-        self.changed.add(str(trace_line))
+        # self.changed.add(str(trace_line))
         if str(compare[0]) in current:
             next_inputs.append(current.replace(cmp0_str, cmp1_str))
         else:
@@ -146,7 +163,7 @@ class GetComparisons(VirtualMachine):
             cmp1_str = str(cmp)
             if compare[0] == cmp:
                 return []
-            self.changed.add(str(trace_line))
+            # self.changed.add(str(trace_line))
             if str(compare[0]) in current:
                 next_inputs.append(current.replace(cmp0_str, cmp1_str))
 
