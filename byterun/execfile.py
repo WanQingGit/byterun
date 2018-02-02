@@ -86,7 +86,7 @@ def calc_heuristic(expansion_counter, vm, input_string):
     # result -= sum((not c.isalnum() and c not in {"\n", "\t", "\r", "\f"}) for c in input_string)
 
     # the number of successful comparisons should directly correlate with how good an input is
-    # result -= get_successful_equality_comparisons(vm.trace)
+    # result -= get_successful_equality_comparisons(vm.trace) * 2
 
     return result
 
