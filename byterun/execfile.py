@@ -6,8 +6,9 @@ import sys
 import tokenize
 import queue
 import string
+import random
 
-from .get_comp import GetComparisons, Operator
+from get_comp import GetComparisons, Operator
 
 # This code is ripped off from coverage.py.  Define things it expects.
 try:
@@ -19,19 +20,57 @@ except:
 
 NoSource = Exception
 
+class Node:
+
+    # parent is an object of class Node
+    # change is a tuple of a position and a string. This tuple is used to determine a substitution
+    # parentstring is the string which caused the generation of this specific node
+    def __init__(self, parent, change, change_pos, parentstring):
+        self.children = []
+        self.parent = parent
+        self.change = change
+        self.change_pos = change_pos
+        self.parentstring = parentstring
+
+
+    # gets a list of children to add to this node
+    def addChildren(self, children):
+        self.children += children
+
+
+    # returns the next child
+    def get_next_child(self):
+        for child in self.children:
+            if child.change[0] == 0:
+                break
+        if child == None:
+            return self.children.pop(0)
+        self.children.remove(child)
+        return child
+
+
+    def child_exists(self):
+        return self.children
+
+
+    def get_substituted_string(self):
+        return self.parentstring[0:self.change[1]] + self.change[2] + self.parentstring[self.change[1] + len(self.change[2]):]
+
 
 def exec_code_object(code, env):
+    random.seed(42)
     # vm = VirtualMachine()
     vm = GetComparisons()
     # TODO: a fast hack to get the loop running, some sophisticated run loop will be added later
-    last_input = "qiaup98bsdf"
-    next_input = ""
-    expansion_list = queue.PriorityQueue()
-    explored = set()
-    expansion_counter = 0
+    next_input = "qiaup98bsdf"
+    current_Node = Node(None, (0, 'q'), 0, next_input)
+    node_list = [current_Node]
+
+    # change_position indicates the next position to look at
+    # TODO if we start substituting strings in nodes, this value is dependant on the size of the string
     with open("outputs.txt","w") as outputs:
-        for i in range(0,3000000):
-            expansion_counter += 1
+        for i in range(0, 3000000):
+            current_change_pos = current_Node.change_pos
             print("#############")
             # we might run into exceptions since we produce invalid inputs
             # we catch those exceptions and produce a new input based on the gained knowledge through the
@@ -43,24 +82,37 @@ def exec_code_object(code, env):
                 pass
             # for t in vm.trace:
             #     print(t)
-            next_inputs = vm.get_next_inputs()
-            for next_input in next_inputs:
-                next_input = ''.join(filter(lambda x: x in string.printable, next_input))
-                # do not reevaluate inputs that we have already seen
-                if next_input not in explored:
-                    new_node = (calc_heuristic(expansion_counter, vm, next_input), last_input, next_input)
-                    expansion_list.put(new_node)
-                    # if an input was already generated, there is no need to explore it again
-                    explored.add(next_input)
-            if expansion_list.empty():
+            next_inputs = vm.get_next_inputs(current_change_pos)
+
+            # node_list = list()
+            for input in next_inputs:
+                node_list.append(Node(current_Node, input, current_change_pos + 1, next_input))
+
+            current_Node.addChildren(node_list)
+
+            # get the next node which has a child which can be used to expand further
+            # while current_Node is not None and not current_Node.child_exists():
+            #     current_Node = current_Node.parent
+            current_Node = node_list.pop(0)
+
+            if current_Node == None:
                 return
-            (_, last_input, next_input) = expansion_list.get_nowait()
+
+            # get the child and use it for the next expansion
+            current_Node = current_Node.get_next_child()
+            next_input = current_Node.get_substituted_string()
+
+
+
+
+
+
             # print(next_inputs)
             # print(expansion_list)
             outputs.write(next_input + "\n")
-            explored.add(next_input)
             vm.clean([next_input])
             sys.argv[1] = next_input
+
 
 
 def calc_heuristic(expansion_counter, vm, input_string):

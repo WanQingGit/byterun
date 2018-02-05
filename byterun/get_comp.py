@@ -5,8 +5,9 @@
 from __future__ import print_function, division
 import sys
 
-from .pyvm2 import VirtualMachine
+from pyvm2 import VirtualMachine
 from enum import Enum
+from random import shuffle
 
 class Operator(Enum):
     LT = 0
@@ -49,6 +50,9 @@ class GetComparisons(VirtualMachine):
         self.lines_seen = set()
         # TODO it might also be worth storing the new comps and exploring inputs based on those new comps first
         self.new_comp_seen = False
+
+        #some constants that may be configured in the future
+        self.expand_in = 2 # sets how many values are taken from the right hand side at most when a call to in or not in happens
 
     def clean(self, new_args):
         self.args = new_args
@@ -122,7 +126,7 @@ class GetComparisons(VirtualMachine):
     #################    Next input generation     ############################
 
     # lets first use a simple approach where strong equality is replaced in the first input
-    def get_next_inputs(self):
+    def get_next_inputs(self, pos):
         next_inputs = list()
         current = self.args[0]
         for t in self.trace:
@@ -130,17 +134,18 @@ class GetComparisons(VirtualMachine):
             # if str(t) in self.changed:
             #     continue
             if t[0] == Operator.EQ or t[0] == Operator.NE:
-                next_inputs += self.eq_next_inputs(t, current)
+                next_inputs += self.eq_next_inputs(t, current, pos)
             elif t[0] == Operator.IN or t[0] == Operator.NOT_IN:
-                next_inputs += self.in_next_inputs(t, current)
+                next_inputs += self.in_next_inputs(t, current, pos)
                 # if the comparison was successful we do not need to change anything
                 # TODO: This does not hold in general, in future we might need to consider succ. comp. as leading into an error
 
         #reverse list before returning, s.t. the last comparison/replacement will be checked first
-        return reversed(next_inputs)
+        return next_inputs
 
 
-    def eq_next_inputs(self, trace_line, current):
+    # TODO find all occ. in near future
+    def eq_next_inputs(self, trace_line, current, pos):
         compare = trace_line[1]
         next_inputs = list()
         cmp0_str = str(compare[0])
@@ -148,23 +153,30 @@ class GetComparisons(VirtualMachine):
         if compare[0] == compare[1]:
             return []
         # self.changed.add(str(trace_line))
-        if str(compare[0]) in current:
-            next_inputs.append(current.replace(cmp0_str, cmp1_str))
-        else:
-            next_inputs.append(current.replace(cmp1_str, cmp0_str))
+        find0 = current.find(cmp0_str)
+        find1 = current.find(cmp1_str)
+        if find0 == pos:
+            next_inputs.append((0, pos, cmp1_str))
+        elif find1 == pos:
+            next_inputs.append((0, pos, cmp0_str))
 
         return next_inputs
 
-    def in_next_inputs(self, trace_line, current):
+    def in_next_inputs(self, trace_line, current, pos):
         compare = trace_line[1]
         next_inputs = list()
         cmp0_str = str(compare[0])
+        counter = 0
         for cmp in compare[1]:
+            if counter <= self.expand_in:
+                break
+            counter += 1
             cmp1_str = str(cmp)
             if compare[0] == cmp:
                 return []
             # self.changed.add(str(trace_line))
-            if str(compare[0]) in current:
-                next_inputs.append(current.replace(cmp0_str, cmp1_str))
+            find0 = current.find(cmp0_str)
+            if find0 == pos:
+                next_inputs.append((1, pos, cmp1_str))
 
         return next_inputs
