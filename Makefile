@@ -6,3 +6,6 @@ extract_json:
 	
 extract_naya:
 	python3 -m byterun subjects/nayajson.py "qiaup98bsdf" 2>/dev/null
+
+extract_url:
+	python3 -m byterun subjects/urlparser.py "qiaup98bsdf" 2>/dev/null

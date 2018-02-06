@@ -247,5 +247,9 @@ def urldefrag(url):
 
 
 if __name__ == "__main__":
-    print(urlparse(sys.argv[1]))
+    result = urlparse(sys.argv[1])
+    for i in result:
+        if i == "":
+            raise ValueError("At least one value is not filled.")
+    print(result)
 

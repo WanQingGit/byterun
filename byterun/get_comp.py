@@ -138,7 +138,10 @@ class GetComparisons(VirtualMachine):
                 next_inputs += self.in_next_inputs(t, current, pos)
 
         # add some letter as substitution as well
-        next_inputs += [(0, pos, "B")]
+        # if nothing else was added, this means, that the character at the position under observation did not have a
+        # comparison, so we do also not add a "B", because the prefix is likely already completely wrong
+        if next_inputs:
+            next_inputs += [(0, pos, "B")]
         return next_inputs
 
 
