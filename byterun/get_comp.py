@@ -5,9 +5,10 @@
 from __future__ import print_function, division
 import sys
 
-from pyvm2 import VirtualMachine
+from .pyvm2 import VirtualMachine
 from enum import Enum
 from random import shuffle
+import string
 
 class Operator(Enum):
     LT = 0
@@ -125,36 +126,39 @@ class GetComparisons(VirtualMachine):
 
     #################    Next input generation     ############################
 
-    # lets first use a simple approach where strong equality is replaced in the first input
+    # lets first use a simple approach where strong equality is used for replacement in the first input
+    # also we use parts of the rhs of the in statement as substitution
     def get_next_inputs(self, pos):
         next_inputs = list()
         current = self.args[0]
         for t in self.trace:
-            # a currently likely unsound method to avoid changes of the same operator again
-            # if str(t) in self.changed:
-            #     continue
             if t[0] == Operator.EQ or t[0] == Operator.NE:
                 next_inputs += self.eq_next_inputs(t, current, pos)
             elif t[0] == Operator.IN or t[0] == Operator.NOT_IN:
                 next_inputs += self.in_next_inputs(t, current, pos)
-                # if the comparison was successful we do not need to change anything
-                # TODO: This does not hold in general, in future we might need to consider succ. comp. as leading into an error
 
-        #reverse list before returning, s.t. the last comparison/replacement will be checked first
+        # add some letter as substitution as well
+        next_inputs += [(0, pos, "B")]
         return next_inputs
 
 
+    # apply the substitution for equality comparisons
     # TODO find all occ. in near future
     def eq_next_inputs(self, trace_line, current, pos):
         compare = trace_line[1]
+        # verify that both operands are string
+        if type(compare[0]) is not str or type(compare[1]) is not str:
+            return []
         next_inputs = list()
         cmp0_str = str(compare[0])
         cmp1_str = str(compare[1])
         if compare[0] == compare[1]:
             return []
+
         # self.changed.add(str(trace_line))
         find0 = current.find(cmp0_str)
         find1 = current.find(cmp1_str)
+        # check if actually the char at the pos we are currently checking was checked in the comparison
         if find0 == pos:
             next_inputs.append((0, pos, cmp1_str))
         elif find1 == pos:
@@ -162,18 +166,25 @@ class GetComparisons(VirtualMachine):
 
         return next_inputs
 
+
+    # apply the subsititution for the in statement
     def in_next_inputs(self, trace_line, current, pos):
         compare = trace_line[1]
+        # the lhs must be a string
+        if type(compare[0]) is not str:
+            return []
         next_inputs = list()
         cmp0_str = str(compare[0])
         counter = 0
+        # take some samples from the collection in is applied on
         for cmp in compare[1]:
-            if counter <= self.expand_in:
+            # only take a subset of the rhs (the collection in is applied on)
+            if counter >= self.expand_in:
                 break
             counter += 1
             cmp1_str = str(cmp)
             if compare[0] == cmp:
-                return []
+                continue
             # self.changed.add(str(trace_line))
             find0 = current.find(cmp0_str)
             if find0 == pos:

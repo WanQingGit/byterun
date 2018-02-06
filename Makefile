@@ -3,3 +3,6 @@ extract_comp_urltools:
 
 extract_json:
 	python3 -m byterun subjects/microjson.py "qiaup98bsdf" 2>/dev/null
+	
+extract_naya:
+	python3 -m byterun subjects/nayajson.py "qiaup98bsdf" 2>/dev/null

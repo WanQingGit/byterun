@@ -8,7 +8,7 @@ import queue
 import string
 import random
 
-from get_comp import GetComparisons, Operator
+from .get_comp import GetComparisons, Operator
 
 # This code is ripped off from coverage.py.  Define things it expects.
 try:
@@ -37,81 +37,124 @@ class Node:
     def addChildren(self, children):
         self.children += children
 
-
-    # returns the next child
+    # returns the next child in list and removes this object from the list
     def get_next_child(self):
-        for child in self.children:
-            if child.change[0] == 0:
-                break
-        if child == None:
-            return self.children.pop(0)
-        self.children.remove(child)
-        return child
+        return self.children.pop(0)
 
-
+    # checks if there are still children in the list
     def child_exists(self):
         return self.children
 
-
+    # replaces at changepos the char with the given replacement in the parenstring
+    # the tuple looks like (heuristic value, position, to_replce), the heursitic value is currently not used but might be in future
     def get_substituted_string(self):
         return self.parentstring[0:self.change[1]] + self.change[2] + self.parentstring[self.change[1] + len(self.change[2]):]
+
 
 
 def exec_code_object(code, env):
     random.seed(42)
     # vm = VirtualMachine()
     vm = GetComparisons()
-    # TODO: a fast hack to get the loop running, some sophisticated run loop will be added later
-    next_input = "qiaup98bsdf"
-    current_Node = Node(None, (0, 'q'), 0, next_input)
-    node_list = [current_Node]
+    # next_input = "qiaup98bsdf"
+    # start with the random input "A"
+    next_input = "A"
+    # start with some dummy node, the given substitution has no further effect
+    current_Node = Node(None, (0, 0, 'q'), 0, next_input)
+    node_list = []
 
-    # change_position indicates the next position to look at
-    # TODO if we start substituting strings in nodes, this value is dependant on the size of the string
     with open("outputs.txt","w") as outputs:
-        for i in range(0, 3000000):
+        # do not fun infinitely long, in future we might want to add some stopping criterion here
+        for i in range(1, 3000000):
+            # TODO add duplicate pruning
+
+            #prepare the VM for running on the given input
+            sys.argv[1] = next_input
+            # outputs.write(next_input + "\n")
+            vm.clean([next_input])
             current_change_pos = current_Node.change_pos
             print("#############")
             # we might run into exceptions since we produce invalid inputs
             # we catch those exceptions and produce a new input based on the gained knowledge through the
             # execution
             print(repr(next_input))
+
+            # run the VM
             try:
                 vm.run_code(code, f_globals=env)
             except Exception:
                 pass
-            # for t in vm.trace:
-            #     print(t)
+
+            # get the next inputs from the VM based on the trace
             next_inputs = vm.get_next_inputs(current_change_pos)
 
-            # node_list = list()
+            # create nodes from the retrieved replacements
+            node_list_append = list()
             for input in next_inputs:
-                node_list.append(Node(current_Node, input, current_change_pos + 1, next_input))
+                node_list_append.append(Node(current_Node, input, current_change_pos + 1, next_input))
 
-            current_Node.addChildren(node_list)
+            # random.shuffle(node_list_append)
+            # filter for inputs, that do not lead to success, i.e. inputs that are already correct and inputs that
+            # can be pruned in another form (see prune_input for more information)
+            for node in list(node_list_append):
+                if prune_input(node):
+                    node_list_append.remove(node)
+                    continue
+                if not check_exception(node, vm, code, env):
+                    node_list_append.remove(node)
+                    outputs.write(node.get_substituted_string() + "\n")
+                    continue
+
+            # add the surviving nodes to the current node, since those are its children
+            current_Node.addChildren(node_list_append)
+
+            # for breadth first search, the nodelist is expanded
+            node_list += node_list_append
 
             # get the next node which has a child which can be used to expand further
             # while current_Node is not None and not current_Node.child_exists():
             #     current_Node = current_Node.parent
+            if not node_list:
+                return
             current_Node = node_list.pop(0)
 
-            if current_Node == None:
-                return
+            # if current_Node == None:
+            #     return
 
             # get the child and use it for the next expansion
-            current_Node = current_Node.get_next_child()
-            next_input = current_Node.get_substituted_string()
+            # current_Node = current_Node.get_next_child()
+
+            # get the next input based on the substitution stored in the current node
+            next_input = current_Node.get_substituted_string() + "A"
 
 
+# for inputs with length greater 3 we can assume that if
+# it ends with a value which was not successful for a small input
+def prune_input(node):
+    s = node.get_substituted_string()
+    if len(s) <= 3:
+        return False
+    # print(repr(s), repr(s[0:len(s) // 2]), repr(s[len(s) // 2:]))
+    if s[len(s)//2:].endswith(s[0:len(s)//2]):
+        return True
+    return False
 
 
+# check if an input causes a crash, if not it is likely successful and can be reported
+#TODO this is currently quite inefficient, since we run the prog on each input twice, should be changed in future
+def check_exception(node, vm, code, env):
+    next_input = node.get_substituted_string()
+    sys.argv[1] = next_input
+    vm.clean([next_input])
+
+    try:
+        vm.run_code(code, f_globals=env)
+    except Exception:
+        return True
+
+    return False
 
 
-            # print(next_inputs)
-            # print(expansion_list)
-            outputs.write(next_input + "\n")
-            vm.clean([next_input])
-            sys.argv[1] = next_input
 
 
 
