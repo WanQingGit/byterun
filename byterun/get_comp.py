@@ -32,6 +32,7 @@ class GetComparisons(VirtualMachine):
     def functions(self):
         self.functions = [
             "find of str",
+            "split of str",
         ]
 
 
@@ -136,12 +137,14 @@ class GetComparisons(VirtualMachine):
                 next_inputs += self.eq_next_inputs(t, current, pos)
             elif t[0] == Operator.IN or t[0] == Operator.NOT_IN:
                 next_inputs += self.in_next_inputs(t, current, pos)
+            elif t[0] == Functions.find_str:
+                next_inputs += self.str_find_next_inputs(t, current, pos)
 
         # add some letter as substitution as well
         # if nothing else was added, this means, that the character at the position under observation did not have a
         # comparison, so we do also not add a "B", because the prefix is likely already completely wrong
         if next_inputs:
-            next_inputs += [(0, pos, "B")]
+            next_inputs += [(0, pos, pos + 1, "B")]
         return next_inputs
 
 
@@ -163,9 +166,9 @@ class GetComparisons(VirtualMachine):
         find1 = current.find(cmp1_str)
         # check if actually the char at the pos we are currently checking was checked in the comparison
         if find0 == pos:
-            next_inputs.append((0, pos, cmp1_str))
+            next_inputs.append((0, pos, pos + len(cmp1_str), cmp1_str))
         elif find1 == pos:
-            next_inputs.append((0, pos, cmp0_str))
+            next_inputs.append((0, pos, pos + len(cmp0_str), cmp0_str))
 
         return next_inputs
 
@@ -182,6 +185,7 @@ class GetComparisons(VirtualMachine):
         # take some samples from the collection in is applied on
         for cmp in compare[1]:
             # only take a subset of the rhs (the collection in is applied on)
+            # TODO in some cases it is important to take the whole content of a collection into account
             if counter >= self.expand_in:
                 break
             counter += 1
@@ -191,6 +195,16 @@ class GetComparisons(VirtualMachine):
             # self.changed.add(str(trace_line))
             find0 = current.find(cmp0_str)
             if find0 == pos:
-                next_inputs.append((1, pos, cmp1_str))
+                next_inputs.append((1, pos, pos + len(cmp1_str), cmp1_str))
 
+        return next_inputs
+
+    def str_find_next_inputs(self, t, current, pos):
+        # t[1][2] is the string which is searched for in the input, replace A with this string
+        input_string = t[1][2]
+        #search in the string for the value the program is looking for, if it exists, we are done here
+        if t[1][0].find(input_string) != -1:
+            return []
+        next_inputs = [(0, pos, pos + len(input_string), input_string)]
+        next_inputs.append((0, pos, pos, input_string))
         return next_inputs

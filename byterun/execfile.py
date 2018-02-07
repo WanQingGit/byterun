@@ -25,11 +25,10 @@ class Node:
     # parent is an object of class Node
     # change is a tuple of a position and a string. This tuple is used to determine a substitution
     # parentstring is the string which caused the generation of this specific node
-    def __init__(self, parent, change, change_pos, parentstring):
+    def __init__(self, parent, change, parentstring):
         self.children = []
         self.parent = parent
         self.change = change
-        self.change_pos = change_pos
         self.parentstring = parentstring
 
 
@@ -45,10 +44,20 @@ class Node:
     def child_exists(self):
         return self.children
 
-    # replaces at changepos the char with the given replacement in the parenstring
-    # the tuple looks like (heuristic value, position, to_replce), the heursitic value is currently not used but might be in future
+    # replaces at changepos the char with the given replacement in the parentstring
+    # the tuple looks like (heuristic value, change_position, position for new observation, string used for replacement)
+    # the heursitic value is currently not used but might be in future
     def get_substituted_string(self):
-        return self.parentstring[0:self.change[1]] + self.change[2] + self.parentstring[self.change[1] + len(self.change[2]):]
+        return self.parentstring[0:self.change[1]] + self.change[3] + self.parentstring[self.change[1] + 1:]
+
+    # returns a new input by substituting the change position and adding a new char at the next position that should be observed
+    def get_next_input(self):
+        next_input = self.get_substituted_string()
+        return next_input[:self.change[2]] + "A" + next_input[self.change[2]:]
+
+    # returns the position of the character under observation
+    def get_observation_pos(self):
+        return self.change[2]
 
 
 
@@ -60,7 +69,7 @@ def exec_code_object(code, env):
     # start with the random input "A"
     next_input = "A"
     # start with some dummy node, the given substitution has no further effect
-    current_Node = Node(None, (0, 0, 'q'), 0, next_input)
+    current_Node = Node(None, (0, 0, 0, 'B'), next_input)
     node_list = []
 
     with open("outputs.txt","w") as outputs:
@@ -72,7 +81,7 @@ def exec_code_object(code, env):
             sys.argv[1] = next_input
             # outputs.write(next_input + "\n")
             vm.clean([next_input])
-            current_change_pos = current_Node.change_pos
+            current_change_pos = current_Node.get_observation_pos()
             print("#############")
             # we might run into exceptions since we produce invalid inputs
             # we catch those exceptions and produce a new input based on the gained knowledge through the
@@ -86,12 +95,12 @@ def exec_code_object(code, env):
                 pass
 
             # get the next inputs from the VM based on the trace
-            next_inputs = vm.get_next_inputs(current_change_pos)
+            next_inputs = vm.get_next_inputs(current_Node.get_observation_pos())
 
             # create nodes from the retrieved replacements
             node_list_append = list()
             for input in next_inputs:
-                node_list_append.append(Node(current_Node, input, current_change_pos + 1, next_input))
+                node_list_append.append(Node(current_Node, input, next_input))
 
             # random.shuffle(node_list_append)
             # filter for inputs, that do not lead to success, i.e. inputs that are already correct and inputs that
@@ -125,7 +134,8 @@ def exec_code_object(code, env):
             # current_Node = current_Node.get_next_child()
 
             # get the next input based on the substitution stored in the current node
-            next_input = current_Node.get_substituted_string() + "A"
+            next_input = current_Node.get_next_input()
+            pass
 
 
 # for inputs with length greater 3 we can assume that if
