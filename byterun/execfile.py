@@ -142,6 +142,10 @@ def exec_code_object(code, env):
 # it ends with a value which was not successful for a small input
 def prune_input(node):
     s = node.get_substituted_string()
+    # we do not need to create arbitrarily long strings, such a thing will likely end in an infinite
+    # string, so we prune branches starting here
+    if "BBBA" in node.get_next_input():
+        return True
     if len(s) <= 3:
         return False
     # print(repr(s), repr(s[0:len(s) // 2]), repr(s[len(s) // 2:]))

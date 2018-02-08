@@ -24,7 +24,9 @@ class Operator(Enum):
     ISSUBCLASS = 10
 
 class Functions(Enum):
+    starting_value = 11
     find_str = 11
+    split_str = 12
 
 
 class GetComparisons(VirtualMachine):
@@ -90,6 +92,8 @@ class GetComparisons(VirtualMachine):
                 self.trace.append((Operator(opnum), operands))
                 break
 
+            # we also have to consider, that a character is looked for, which is not in the arg, e.g. "'?' in arg"
+
         return VirtualMachine.byte_COMPARE_OP(self, opnum)
 
 
@@ -102,17 +106,20 @@ class GetComparisons(VirtualMachine):
 
 
     def function_watched(self, function_string):
+        counter = 0
         for f in self.functions:
             if f in function_string:
-                return True
-        return False
+                return counter
+            counter += 1
+        return -1
 
 
     def byte_CALL_FUNCTION(self, arg):
         self.line_already_seen()
         args = self.topn(arg + 1)
-        if self.function_watched(str(args[0])):
-            self.trace.append((Functions(11), [str(self.load_from)] + args))
+        func_watched = self.function_watched(str(args[0]))
+        if func_watched != -1:
+            self.trace.append((Functions(Functions.starting_value.value + func_watched), [str(self.load_from)] + args))
 
         return VirtualMachine.byte_CALL_FUNCTION(self, arg)
 
@@ -139,6 +146,8 @@ class GetComparisons(VirtualMachine):
                 next_inputs += self.in_next_inputs(t, current, pos)
             elif t[0] == Functions.find_str:
                 next_inputs += self.str_find_next_inputs(t, current, pos)
+            elif t[0] == Functions.split_str:
+                next_inputs += self.str_split_next_inputs(t, current, pos)
 
         # add some letter as substitution as well
         # if nothing else was added, this means, that the character at the position under observation did not have a
@@ -146,6 +155,17 @@ class GetComparisons(VirtualMachine):
         if next_inputs:
             next_inputs += [(0, pos, pos + 1, "B")]
         return next_inputs
+
+
+    # appends a new input based on the current checking position, the subst. and the value which was used for the run
+    # the next position to observe will lie directly behind the substituted position
+    def append_new_input(self, next_inputs, pos, subst, current):
+        next_inputs.append((0, pos, pos + len(subst), subst))
+        # if the character under observation lies in the middle of the string, it might be that we fulfilled the
+        # constraint and should now start with appending stuff to the string again (new string will have length of
+        # current plus length of the substitution minus 1 since the position under observation is substituted)
+        if pos < len(current) - 1:
+            next_inputs.append((0, pos, len(current) + len(subst) - 1, subst))
 
 
     # apply the substitution for equality comparisons
@@ -166,9 +186,9 @@ class GetComparisons(VirtualMachine):
         find1 = current.find(cmp1_str)
         # check if actually the char at the pos we are currently checking was checked in the comparison
         if find0 == pos:
-            next_inputs.append((0, pos, pos + len(cmp1_str), cmp1_str))
+            self.append_new_input(next_inputs, pos, cmp1_str, current)
         elif find1 == pos:
-            next_inputs.append((0, pos, pos + len(cmp0_str), cmp0_str))
+            self.append_new_input(next_inputs, pos, cmp1_str, current)
 
         return next_inputs
 
@@ -195,16 +215,57 @@ class GetComparisons(VirtualMachine):
             # self.changed.add(str(trace_line))
             find0 = current.find(cmp0_str)
             if find0 == pos:
-                next_inputs.append((1, pos, pos + len(cmp1_str), cmp1_str))
+                self.append_new_input(next_inputs, pos, cmp1_str, current)
+
+        # it could also be, that a char is searched in the rhs, if this is the case, we have to handle this like in find
+        # but only if the lhs is not the char under observation and only if the char we look for does not already exist
+        # in the string we are searching
+        # concretely we check if the rhs is a substring of the current input, if yes we are looking for something in the
+        # current input
+        check_char = current[pos]
+        if not next_inputs and type(compare[1]) is str and cmp0_str not in compare[1] and compare[1] in current:
+            self.append_new_input_non_direct_replace(next_inputs, current, cmp0_str, pos)
 
         return next_inputs
+
+    def str_split_next_inputs(self, t, current, pos):
+        # split is the same as find, but it may have a parameter which defines how many splits should be performed,
+        # this does not interest us at the moment
+        # TODO in future take the number of splits into account
+        try:
+            t[1][3] = 0
+        except:
+            pass
+        return self.str_find_next_inputs(t, current, pos)
 
     def str_find_next_inputs(self, t, current, pos):
         # t[1][2] is the string which is searched for in the input, replace A with this string
         input_string = t[1][2]
+        beg = 0
+        end = len(t[1][0])
+        try:
+            beg = t[1][3]
+            end = t[1][4]
+        except:
+            pass
         #search in the string for the value the program is looking for, if it exists, we are done here
-        if t[1][0].find(input_string) != -1:
+        if t[1][0].find(input_string, beg, end) != -1:
             return []
-        next_inputs = [(0, pos, pos + len(input_string), input_string)]
+        # here we have to handle the input appending ourselves since we have a special case
+        # replace the position under observation with the new input string and ...
+        next_inputs = list()
+        next_inputs = self.append_new_input_non_direct_replace(next_inputs, current, input_string, pos)
+        return next_inputs
+
+    # instead of replacing the char under naively, we replace the char and either look at the positions specified below
+    def append_new_input_non_direct_replace(self, next_inputs, current, input_string, pos):
+        # set the next position behind what we just replaced
+        next_inputs.append((0, pos, pos + len(input_string), input_string))
+        # set the next position in front of what we just replaced
         next_inputs.append((0, pos, pos, input_string))
+        # set the next position at the end of the string, s.t. if we satisfied something, we can restart appending
+        # it may be that the replacement we did beforehand already sets the next pos to the end, then we do not need to
+        # add a new position here
+        if (pos + len(input_string) != len(current)):
+            next_inputs.append((0, pos, len(current), input_string))
         return next_inputs
