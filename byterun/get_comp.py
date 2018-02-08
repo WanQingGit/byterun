@@ -223,10 +223,16 @@ class GetComparisons(VirtualMachine):
         # concretely we check if the rhs is a substring of the current input, if yes we are looking for something in the
         # current input
         check_char = current[pos]
-        if not next_inputs and type(compare[1]) is str and cmp0_str not in compare[1] and compare[1] in current:
+        if not next_inputs and self.check_in_string(compare[1], current, check_char, cmp0_str):
             self.append_new_input_non_direct_replace(next_inputs, current, cmp0_str, pos)
 
         return next_inputs
+
+    # checks if the lhs is not in comp, comp is a non-empty string which is in current and the check_char must also
+    # be in current
+    def check_in_string(self, comp, current, check_char, lhs):
+        return type(comp) is str and lhs not in comp \
+                and comp != '' and comp in current and check_char in comp
 
     def str_split_next_inputs(self, t, current, pos):
         # split is the same as find, but it may have a parameter which defines how many splits should be performed,
@@ -249,7 +255,9 @@ class GetComparisons(VirtualMachine):
         except:
             pass
         #search in the string for the value the program is looking for, if it exists, we are done here
-        if t[1][0].find(input_string, beg, end) != -1:
+        # also if the position to check is not in the string we are searching, we can stop here
+        check_char = current[pos]
+        if not self.check_in_string(t[1][0][beg:end], current, check_char, input_string):
             return []
         # here we have to handle the input appending ourselves since we have a special case
         # replace the position under observation with the new input string and ...

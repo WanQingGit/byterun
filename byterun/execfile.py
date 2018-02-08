@@ -72,6 +72,7 @@ def exec_code_object(code, env):
     current_Node = Node(None, (0, 0, 0, 'B'), next_input)
     node_list = []
 
+    already_seen = set()
     with open("outputs.txt","w") as outputs:
         # do not fun infinitely long, in future we might want to add some stopping criterion here
         for i in range(1, 3000000):
@@ -107,6 +108,9 @@ def exec_code_object(code, env):
             # can be pruned in another form (see prune_input for more information)
             for node in list(node_list_append):
                 if prune_input(node):
+                    node_list_append.remove(node)
+                    continue
+                if check_seen(already_seen, node):
                     node_list_append.remove(node)
                     continue
                 if not check_exception(node, vm, code, env):
@@ -152,6 +156,14 @@ def prune_input(node):
     if s[len(s)//2:].endswith(s[0:len(s)//2]):
         return True
     return False
+
+
+#check if the input is already in the queue, if yes one can just prune it at this point
+def check_seen(already_seen, node):
+    s = node.get_next_input()
+    if s in already_seen:
+        return True
+    already_seen.add(node.get_next_input())
 
 
 # check if an input causes a crash, if not it is likely successful and can be reported
