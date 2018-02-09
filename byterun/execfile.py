@@ -7,6 +7,7 @@ import tokenize
 import queue
 import string
 import random
+import json
 
 from .get_comp import GetComparisons, Operator
 
@@ -58,6 +59,18 @@ class Node:
     # returns the position of the character under observation
     def get_observation_pos(self):
         return self.change[2]
+
+    # returns the position that is substituted
+    def get_subst_pos(self):
+        return self.change[1]
+
+    # returns the comparisons made on the position that is substituted
+    def get_comparisons(self):
+        return self.change[4]
+
+    # returns the string that is used for the substitution
+    def get_string_of_subsitution(self):
+        return self.change[3]
 
 
 
@@ -115,7 +128,9 @@ def exec_code_object(code, env):
                     continue
                 if not check_exception(node, vm, code, env):
                     node_list_append.remove(node)
-                    outputs.write(node.get_substituted_string() + "\n")
+                    # comparisons = print_comp(node)
+                    # outputs.write("{\n\t\"" + node.get_substituted_string() +"\":{\n" + comparisons + "\n}\n")
+                    outputs.write(repr(node.get_substituted_string()) + "\n")
                     continue
 
             # add the surviving nodes to the current node, since those are its children
@@ -179,6 +194,31 @@ def check_exception(node, vm, code, env):
         return True
 
     return False
+
+
+def print_comp(node):
+    objects = list()
+    while node.parent is not None:
+        comps = "["
+        for cmp in node.get_comparisons():
+            comps += "{\"" + cmp[0].name + "\":["
+            for arg in cmp[1]:
+                comps += "\"" + str(arg) + "\","
+            # remove last comma
+            comps = comps[:-1]
+            comps += "]},"
+        comps = comps[:-1]
+        comps += "]"
+        object = "{\"%s\":[\"%s\",%s]}" % (node.get_subst_pos(), node.get_string_of_subsitution(), comps)
+        objects.append(object)
+        node = node.parent
+    result = "["
+    for obj in reversed(objects):
+        result += obj + ","
+    result = result[:-1]
+    result += "]"
+    return json.dumps(json.loads(result), indent= 2)
+
 
 
 
