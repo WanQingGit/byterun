@@ -132,154 +132,85 @@ class GetComparisons(VirtualMachine):
         return VirtualMachine.byte_LOAD_ATTR(self, attr)
 
 
-    #################    Next input generation     ############################
-
-    # lets first use a simple approach where strong equality is used for replacement in the first input
-    # also we use parts of the rhs of the in statement as substitution
-    def get_next_inputs(self, pos):
-        next_inputs = list()
-        current = self.args[0]
-        length_next_inputs = 0
+    ######### Trace report #############
+    def extract_predicates(self):
+        remaining_input = sys.argv[1]
         comparisons = list()
+
         for t in self.trace:
             if t[0] == Operator.EQ or t[0] == Operator.NE:
-                next_inputs += self.eq_next_inputs(t, current, pos, comparisons)
+                remaining_input = self.eq_comp(t, remaining_input, comparisons)
             elif t[0] == Operator.IN or t[0] == Operator.NOT_IN:
-                next_inputs += self.in_next_inputs(t, current, pos, comparisons)
-            elif t[0] == Functions.find_str:
-                next_inputs += self.str_find_next_inputs(t, current, pos, comparisons)
-            elif t[0] == Functions.split_str:
-                next_inputs += self.str_split_next_inputs(t, current, pos, comparisons)
+                remaining_input = self.in_comp(t, remaining_input, comparisons)
 
-            if len(next_inputs) > length_next_inputs:
-                length_next_inputs = len(next_inputs)
-                comparisons.append(t)
+            # if len(remaining_input) > length_next_inputs:
+            #     length_next_inputs = len(next_inputs)
+            #     comparisons.append(t)
 
-        # add some letter as substitution as well
-        # if nothing else was added, this means, that the character at the position under observation did not have a
-        # comparison, so we do also not add a "B", because the prefix is likely already completely wrong
-        if next_inputs:
-            next_inputs += [(0, pos, pos + 1, "B", comparisons)]
-        return next_inputs
+        return comparisons
 
-
-    # appends a new input based on the current checking position, the subst. and the value which was used for the run
-    # the next position to observe will lie directly behind the substituted position
-    def append_new_input(self, next_inputs, pos, subst, current, comparisons):
-        next_inputs.append((0, pos, pos + len(subst), subst, comparisons))
-        # if the character under observation lies in the middle of the string, it might be that we fulfilled the
-        # constraint and should now start with appending stuff to the string again (new string will have length of
-        # current plus length of the substitution minus 1 since the position under observation is substituted)
-        if pos < len(current) - 1:
-            next_inputs.append((0, pos, len(current) + len(subst) - 1, subst, comparisons))
+    # adds a new comparison to the list of comparisons
+    # key is the value from the input which was compared
+    # comparisons is the list of comparisons made throughout the exec
+    # op is the used operator
+    # comp_with is the value with which the input was compared
+    # value is the outcome of the comparison
+    def add_comparison(self, key, comparisons, op, comp_with, value):
+        if comparisons and comparisons[- 1][0] == key:
+            comparisons[- 1][1].append((op.name, comp_with, value))
+        else:
+            comparisons.append((key, [(op.name, comp_with, value)]))
 
 
-    # apply the substitution for equality comparisons
-    # TODO find all occ. in near future
-    def eq_next_inputs(self, trace_line, current, pos, comparisons):
+
+    def eq_comp(self, trace_line, remaining_input, comparisons):
         compare = trace_line[1]
         # verify that both operands are string
         if type(compare[0]) is not str or type(compare[1]) is not str:
-            return []
-        next_inputs = list()
+            return remaining_input
         cmp0_str = str(compare[0])
         cmp1_str = str(compare[1])
+        find0 = remaining_input.find(cmp0_str)
+        find1 = remaining_input.find(cmp1_str)
+        # if both sides of the equality are not part of the remaining string, the comparison does likely not have to
+        # do something with our input
+        if find0 == -1 and find1 == -1:
+            return remaining_input
+        pos = min(i for i in [find0, find1] if i >= 0)
+        remaining_input = remaining_input[pos:]
+        operator_eq = trace_line[0] == Operator.EQ
+        if compare[0] == "" or compare[1] == "":
+            return remaining_input
         if compare[0] == compare[1]:
-            return []
-
-        # self.changed.add(str(trace_line))
-        find0 = current.find(cmp0_str)
-        find1 = current.find(cmp1_str)
-        # check if actually the char at the pos we are currently checking was checked in the comparison
-        if find0 == pos:
-            self.append_new_input(next_inputs, pos, cmp1_str, current, comparisons)
-        elif find1 == pos:
-            self.append_new_input(next_inputs, pos, cmp1_str, current, comparisons)
-
-        return next_inputs
+            self.add_comparison(compare[0], comparisons, Operator.EQ, compare[0], True if operator_eq else False)
+        else:
+            if remaining_input.startswith(compare[0]):
+                self.add_comparison(compare[0], comparisons, Operator.EQ, compare[1], False if operator_eq else True)
+            else:
+                self.add_comparison(compare[1], comparisons, Operator.EQ, compare[0], False if operator_eq else True)
+        return remaining_input
 
 
     # apply the subsititution for the in statement
-    def in_next_inputs(self, trace_line, current, pos, comparisons):
+    def in_comp(self, trace_line, remaining_input, comparisons):
         compare = trace_line[1]
-        # the lhs must be a string
+        # verify that both operands are string
         if type(compare[0]) is not str:
-            return []
-        next_inputs = list()
+            return remaining_input
         cmp0_str = str(compare[0])
-        counter = 0
-        # take some samples from the collection in is applied on
-        for cmp in compare[1]:
-            # only take a subset of the rhs (the collection in is applied on)
-            # TODO in some cases it is important to take the whole content of a collection into account
-            if counter >= self.expand_in:
-                break
-            counter += 1
-            cmp1_str = str(cmp)
-            if compare[0] == cmp:
-                continue
-            # self.changed.add(str(trace_line))
-            find0 = current.find(cmp0_str)
-            if find0 == pos:
-                self.append_new_input(next_inputs, pos, cmp1_str, current, comparisons)
+        if cmp0_str == "":
+            return remaining_input
+        find0 = remaining_input.find(cmp0_str)
+        # if the lhs is not part of the remaining string, the comparison does likely not have to
+        # do something with our input
+        if find0 != -1:
+            remaining_input = remaining_input[find0:]
+            if trace_line[0] == Operator.IN:
+                self.add_comparison(compare[0], comparisons, Operator.IN, str(compare[1]), compare[0] in compare[1])
+            else:
+                self.add_comparison(compare[0], comparisons, Operator.NOT_IN, compare[1], compare[0] not in compare[1])
+            return remaining_input
+        else:
+            # it might be that something is searched in the input string, we ignore this for the moment
+            return remaining_input
 
-        # it could also be, that a char is searched in the rhs, if this is the case, we have to handle this like in find
-        # but only if the lhs is not the char under observation and only if the char we look for does not already exist
-        # in the string we are searching
-        # concretely we check if the rhs is a substring of the current input, if yes we are looking for something in the
-        # current input
-        check_char = current[pos]
-        if not next_inputs and self.check_in_string(compare[1], current, check_char, cmp0_str):
-            self.append_new_input_non_direct_replace(next_inputs, current, cmp0_str, pos, comparisons)
-
-        return next_inputs
-
-    # checks if the lhs is not in comp, comp is a non-empty string which is in current and the check_char must also
-    # be in current
-    def check_in_string(self, comp, current, check_char, lhs):
-        return type(comp) is str and lhs not in comp \
-                and comp != '' and comp in current and check_char in comp
-
-    def str_split_next_inputs(self, t, current, pos, comparisons):
-        # split is the same as find, but it may have a parameter which defines how many splits should be performed,
-        # this does not interest us at the moment
-        # TODO in future take the number of splits into account
-        try:
-            t[1][3] = 0
-        except:
-            pass
-        return self.str_find_next_inputs(t, current, pos, comparisons)
-
-    def str_find_next_inputs(self, t, current, pos, comparisons):
-        # t[1][2] is the string which is searched for in the input, replace A with this string
-        input_string = t[1][2]
-        beg = 0
-        end = len(t[1][0])
-        try:
-            beg = t[1][3]
-            end = t[1][4]
-        except:
-            pass
-        #search in the string for the value the program is looking for, if it exists, we are done here
-        # also if the position to check is not in the string we are searching, we can stop here
-        check_char = current[pos]
-        if not self.check_in_string(t[1][0][beg:end], current, check_char, input_string):
-            return []
-        # here we have to handle the input appending ourselves since we have a special case
-        # replace the position under observation with the new input string and ...
-        next_inputs = list()
-        next_inputs = self.append_new_input_non_direct_replace(next_inputs, current, input_string, pos, comparisons)
-        return next_inputs
-
-    # instead of replacing the char under naively, we replace the char and either look at the positions specified below
-    def append_new_input_non_direct_replace(self, next_inputs, current, input_string, pos, comparisons):
-        # set the next position behind what we just replaced
-        next_inputs.append((0, pos, pos + len(input_string), input_string, comparisons))
-        # set the next position in front of what we just replaced
-        next_inputs.append((0, pos, pos, input_string, comparisons))
-        # set the next position at the end of the string, s.t. if we satisfied something, we can restart appending
-        # it may be that the replacement we did beforehand already sets the next pos to the end, then we do not need to
-        # add a new position here
-        if (pos + len(input_string) != len(current)):
-            next_inputs.append((0, pos, len(current), input_string, comparisons))
-        return next_inputs

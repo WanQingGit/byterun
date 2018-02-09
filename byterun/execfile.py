@@ -78,193 +78,32 @@ def exec_code_object(code, env):
     random.seed(42)
     # vm = VirtualMachine()
     vm = GetComparisons()
-    # next_input = "qiaup98bsdf"
-    # start with the random input "A"
-    next_input = "A"
-    # start with some dummy node, the given substitution has no further effect
-    current_Node = Node(None, (0, 0, 0, 'B'), next_input)
-    node_list = []
 
-    already_seen = set()
-    with open("outputs.txt","w") as outputs:
-        # do not fun infinitely long, in future we might want to add some stopping criterion here
-        for i in range(1, 3000000):
-            # TODO add duplicate pruning
+    print(sys.argv)
 
-            #prepare the VM for running on the given input
-            sys.argv[1] = next_input
-            # outputs.write(next_input + "\n")
-            vm.clean([next_input])
-            current_change_pos = current_Node.get_observation_pos()
-            print("#############")
-            # we might run into exceptions since we produce invalid inputs
-            # we catch those exceptions and produce a new input based on the gained knowledge through the
-            # execution
-            print(repr(next_input))
-
-            # run the VM
-            try:
-                vm.run_code(code, f_globals=env)
-            except Exception:
-                pass
-
-            # get the next inputs from the VM based on the trace
-            next_inputs = vm.get_next_inputs(current_Node.get_observation_pos())
-
-            # create nodes from the retrieved replacements
-            node_list_append = list()
-            for input in next_inputs:
-                node_list_append.append(Node(current_Node, input, next_input))
-
-            # random.shuffle(node_list_append)
-            # filter for inputs, that do not lead to success, i.e. inputs that are already correct and inputs that
-            # can be pruned in another form (see prune_input for more information)
-            for node in list(node_list_append):
-                if prune_input(node):
-                    node_list_append.remove(node)
-                    continue
-                if check_seen(already_seen, node):
-                    node_list_append.remove(node)
-                    continue
-                if not check_exception(node, vm, code, env):
-                    node_list_append.remove(node)
-                    # comparisons = print_comp(node)
-                    # outputs.write("{\n\t\"" + node.get_substituted_string() +"\":{\n" + comparisons + "\n}\n")
-                    outputs.write(repr(node.get_substituted_string()) + "\n")
-                    continue
-
-            # add the surviving nodes to the current node, since those are its children
-            current_Node.addChildren(node_list_append)
-
-            # for breadth first search, the nodelist is expanded
-            node_list += node_list_append
-
-            # get the next node which has a child which can be used to expand further
-            # while current_Node is not None and not current_Node.child_exists():
-            #     current_Node = current_Node.parent
-            if not node_list:
-                return
-            current_Node = node_list.pop(0)
-
-            # if current_Node == None:
-            #     return
-
-            # get the child and use it for the next expansion
-            # current_Node = current_Node.get_next_child()
-
-            # get the next input based on the substitution stored in the current node
-            next_input = current_Node.get_next_input()
-            pass
-
-
-# for inputs with length greater 3 we can assume that if
-# it ends with a value which was not successful for a small input
-def prune_input(node):
-    s = node.get_substituted_string()
-    # we do not need to create arbitrarily long strings, such a thing will likely end in an infinite
-    # string, so we prune branches starting here
-    if "BBBA" in node.get_next_input():
-        return True
-    if len(s) <= 3:
-        return False
-    # print(repr(s), repr(s[0:len(s) // 2]), repr(s[len(s) // 2:]))
-    if s[len(s)//2:].endswith(s[0:len(s)//2]):
-        return True
-    return False
-
-
-#check if the input is already in the queue, if yes one can just prune it at this point
-def check_seen(already_seen, node):
-    s = node.get_next_input()
-    if s in already_seen:
-        return True
-    already_seen.add(node.get_next_input())
-
-
-# check if an input causes a crash, if not it is likely successful and can be reported
-#TODO this is currently quite inefficient, since we run the prog on each input twice, should be changed in future
-def check_exception(node, vm, code, env):
-    next_input = node.get_substituted_string()
-    sys.argv[1] = next_input
-    vm.clean([next_input])
-
+    # run the VM
     try:
         vm.run_code(code, f_globals=env)
     except Exception:
-        return True
+        pass
 
-    return False
-
-
-def print_comp(node):
-    objects = list()
-    while node.parent is not None:
-        comps = "["
-        for cmp in node.get_comparisons():
-            comps += "{\"" + cmp[0].name + "\":["
-            for arg in cmp[1]:
-                comps += "\"" + str(arg) + "\","
-            # remove last comma
-            comps = comps[:-1]
-            comps += "]},"
-        comps = comps[:-1]
-        comps += "]"
-        object = "{\"%s\":[\"%s\",%s]}" % (node.get_subst_pos(), node.get_string_of_subsitution(), comps)
-        objects.append(object)
-        node = node.parent
-    result = "["
-    for obj in reversed(objects):
-        result += obj + ","
-    result = result[:-1]
-    result += "]"
-    return json.dumps(json.loads(result), indent= 2)
+    # get the next inputs from the VM based on the trace
+    comparisons = vm.extract_predicates()
+    remove_sets(comparisons)
+    s = json.dumps(comparisons, indent=1)
+    with open("predicates.json", "w") as preds:
+        preds.write(s)
 
 
-
-
-
-
-def calc_heuristic(expansion_counter, vm, input_string):
-    result = sys.maxsize // 2
-
-    # earlier expansions should be prioritized
-    # inputs that are created based on later comparisons might be deeper down in the program and should therefore
-    # be preferred
-    result += expansion_counter
-    # longer traces indicate more execution, so likely the input was more correct
-    # result -= len(vm.trace)
-    # inputs that do not produce an exception might be correct, so we prefer it by some constant
-    # if vm.last_exception is None:
-    #     result -= 20
-    # shorter inputs are preferred at the moment
-    # result += len(input_string)
-
-    # a higher levensthein distance is better
-    # result -= len(set("qiaup98bsdf") & set(input_string)) * 4
-
-    # prefer inputs with many control characters (non-alpha nums)
-    # result -= sum((not c.isalnum() and c not in {"\n", "\t", "\r", "\f"}) for c in input_string)
-
-    # the number of successful comparisons should directly correlate with how good an input is
-    # result -= get_successful_equality_comparisons(vm.trace)
-
-    # check if new comparisons where explored with this input, if yes, it might be worth checking this input in more
-    # detail
-    if vm.new_comp_seen:
-        result -= 20
-
-    return result
-
-
-# get the number of successful equality comparisons in a trace
-def get_successful_equality_comparisons(trace):
-    counter = 0
-    for t in trace:
-        if t[0] == Operator.EQ:
-            if t[1][0] == t[1][1]:
-               counter += 1
-    return counter
-
+# sets can not be serialized, so we convert them to lists
+def remove_sets(comparisons):
+    for cmp in comparisons:
+        for i in range(0, len(cmp[1])):
+            el = cmp[1][i]
+            if type(el[1]) is set:
+                cmp_list = list(el)
+                cmp_list[1] = list(cmp_list[1])
+                cmp[1][i] = tuple(cmp_list)
 
 
 # TODO: we need a more sophisicated restart function in future
