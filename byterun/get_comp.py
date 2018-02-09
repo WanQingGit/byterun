@@ -24,7 +24,7 @@ class Operator(Enum):
     ISSUBCLASS = 10
 
 class Functions(Enum):
-    starting_value = 11
+    starting_value = 10
     find_str = 11
     split_str = 12
 
@@ -119,7 +119,7 @@ class GetComparisons(VirtualMachine):
         args = self.topn(arg + 1)
         func_watched = self.function_watched(str(args[0]))
         if func_watched != -1:
-            self.trace.append((Functions(Functions.starting_value.value + func_watched), [str(self.load_from)] + args))
+            self.trace.append((Functions(Functions.starting_value.value + func_watched + 1), [str(self.load_from)] + args))
 
         return VirtualMachine.byte_CALL_FUNCTION(self, arg)
 

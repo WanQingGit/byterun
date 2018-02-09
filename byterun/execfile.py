@@ -9,7 +9,7 @@ import string
 import random
 import json
 
-from .get_comp import GetComparisons, Operator
+from .get_comp import GetComparisons, Operator, Functions
 
 # This code is ripped off from coverage.py.  Define things it expects.
 try:
@@ -73,6 +73,8 @@ class Node:
         return self.change[3]
 
 
+# this is a constant which defines how many parents are checked for an equal comparison chain of the last character
+comparison_equality_chain = 3
 
 def exec_code_object(code, env):
     random.seed(42)
@@ -170,8 +172,40 @@ def prune_input(node):
     # print(repr(s), repr(s[0:len(s) // 2]), repr(s[len(s) // 2:]))
     if s[len(s)//2:].endswith(s[0:len(s)//2]):
         return True
+    if comparison_chain_equal(node):
+        return True
     return False
 
+# TODO this can be done just on the parent instead of checking for all children
+def comparison_chain_equal(node):
+    global comparison_equality_chain
+    initial_trace = node.get_comparisons()
+    for i_eq in range(0,comparison_equality_chain):
+        if node.parent is None:
+            return False
+        node = node.parent
+        cmp_trace = node.get_comparisons()
+        if len(cmp_trace) != len(initial_trace):
+            return False
+        i = 0
+        for i in range(0, len(cmp_trace)):
+            cmp = cmp_trace[i]
+            init = initial_trace[i]
+            if cmp != init:
+                if not compare_predicates_in_detail(cmp, init):
+                    return False
+    return True
+
+
+# checks if two predicates are equal for some special cases like in or special function calls
+def compare_predicates_in_detail(cmp, init):
+    if cmp[0] == init[0]:
+        # for split and find on string check if the value to look for is the same, if yes return true
+        if cmp[0] in [Functions.split_str, Functions.find_str]:
+            return cmp[1][-1] == cmp[1][-1]
+        if cmp[0] in [Operator.IN, Operator.NOT_IN]:
+            return False
+    return False
 
 #check if the input is already in the queue, if yes one can just prune it at this point
 def check_seen(already_seen, node):
