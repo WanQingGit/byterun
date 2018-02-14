@@ -9,6 +9,7 @@ from .pyvm2 import VirtualMachine
 from enum import Enum
 from random import shuffle
 import string
+import exrex
 
 class Operator(Enum):
     LT = 0
@@ -27,6 +28,7 @@ class Functions(Enum):
     starting_value = 10
     find_str = 11
     split_str = 12
+    match_sre = 13
 
 
 class GetComparisons(VirtualMachine):
@@ -35,6 +37,7 @@ class GetComparisons(VirtualMachine):
         self.functions = [
             "find of str",
             "split of str",
+            "match of _sre.SRE_Pattern"
         ]
 
 
@@ -119,7 +122,7 @@ class GetComparisons(VirtualMachine):
         args = self.topn(arg + 1)
         func_watched = self.function_watched(str(args[0]))
         if func_watched != -1:
-            self.trace.append((Functions(Functions.starting_value.value + func_watched + 1), [str(self.load_from)] + args))
+            self.trace.append((Functions(Functions.starting_value.value + func_watched + 1), [self.load_from] + args))
 
         return VirtualMachine.byte_CALL_FUNCTION(self, arg)
 
@@ -150,6 +153,8 @@ class GetComparisons(VirtualMachine):
                 next_inputs += self.str_find_next_inputs(t, current, pos, comparisons)
             elif t[0] == Functions.split_str:
                 next_inputs += self.str_split_next_inputs(t, current, pos, comparisons)
+            elif t[0] == Functions.match_sre:
+                next_inputs += self.match_sre_next_inputs(t, current, pos, comparisons)
 
             if len(next_inputs) > length_next_inputs:
                 length_next_inputs = len(next_inputs)
@@ -159,19 +164,19 @@ class GetComparisons(VirtualMachine):
         # if nothing else was added, this means, that the character at the position under observation did not have a
         # comparison, so we do also not add a "B", because the prefix is likely already completely wrong
         if next_inputs:
-            next_inputs += [(0, pos, pos + 1, "B", comparisons)]
+            next_inputs += [(0, pos, pos + 1, "B", comparisons, current)]
         return next_inputs
 
 
     # appends a new input based on the current checking position, the subst. and the value which was used for the run
     # the next position to observe will lie directly behind the substituted position
     def append_new_input(self, next_inputs, pos, subst, current, comparisons):
-        next_inputs.append((0, pos, pos + len(subst), subst, comparisons))
+        next_inputs.append((0, pos, pos + len(subst), subst, comparisons, current))
         # if the character under observation lies in the middle of the string, it might be that we fulfilled the
         # constraint and should now start with appending stuff to the string again (new string will have length of
         # current plus length of the substitution minus 1 since the position under observation is substituted)
         if pos < len(current) - 1:
-            next_inputs.append((0, pos, len(current) + len(subst) - 1, subst, comparisons))
+            next_inputs.append((0, pos, len(current) + len(subst) - 1, subst, comparisons, current))
 
 
     # apply the substitution for equality comparisons
@@ -274,12 +279,38 @@ class GetComparisons(VirtualMachine):
     # instead of replacing the char under naively, we replace the char and either look at the positions specified below
     def append_new_input_non_direct_replace(self, next_inputs, current, input_string, pos, comparisons):
         # set the next position behind what we just replaced
-        next_inputs.append((0, pos, pos + len(input_string), input_string, comparisons))
+        next_inputs.append((0, pos, pos + len(input_string), input_string, comparisons, current))
         # set the next position in front of what we just replaced
-        next_inputs.append((0, pos, pos, input_string, comparisons))
+        next_inputs.append((0, pos, pos, input_string, comparisons, current))
         # set the next position at the end of the string, s.t. if we satisfied something, we can restart appending
         # it may be that the replacement we did beforehand already sets the next pos to the end, then we do not need to
         # add a new position here
         if (pos + len(input_string) != len(current)):
-            next_inputs.append((0, pos, len(current), input_string, comparisons))
+            next_inputs.append((0, pos, len(current), input_string, comparisons, current))
+        return next_inputs
+
+
+    def match_sre_next_inputs(self, trace_line, current, pos, comparisons):
+        pattern = trace_line[1][0].pattern
+        string = exrex.getone(pattern)
+        # we use A as the char which is checked against, so at at this point we should
+        string = string.replace("A","B")
+        # TODO replacement needs to be done on the whole string that is tried to be matched, this feature
+        # needs to be implemented
+
+        # TODO also we should check if the string was matched, if yes we should replace with something non-matching
+
+        # TODO actually the best idea would be to see where the regex fails first and only replace the failing suffix
+
+        # TODO also we have to think about optional creations, so in the end we should think about how to produce
+        # strings properly from the regex
+        next_inputs = list()
+        to_match = trace_line[1][2]
+        if to_match in current:
+            match_pos = current.find(to_match)
+            # from the current input cut out whatever was tried to be matched and replace it later with what was
+            # tried to be matched (i.e. a representative of the regex), therefore the A is still included
+            new_current = current[match_pos:max(match_pos, len(current) - len(string))] + "A" + current[max(match_pos, len(current) - len(string)) + len(string) + 1:]
+            pos = match_pos
+            self.append_new_input(next_inputs, pos, string, new_current, comparisons)
         return next_inputs

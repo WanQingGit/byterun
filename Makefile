@@ -9,3 +9,6 @@ extract_naya:
 
 extract_url:
 	python3 -m byterun subjects/urlparser.py "qiaup98bsdf" 2>/dev/null
+	
+extract_time:
+	python3 -m byterun subjects/timeparse.py "qiaup98bsdf" 2>/dev/null

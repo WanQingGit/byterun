@@ -26,11 +26,11 @@ class Node:
     # parent is an object of class Node
     # change is a tuple of a position and a string. This tuple is used to determine a substitution
     # parentstring is the string which caused the generation of this specific node
-    def __init__(self, parent, change, parentstring):
+    def __init__(self, parent, change):
         self.children = []
         self.parent = parent
         self.change = change
-        self.parentstring = parentstring
+        self.parentstring = change[5]
 
 
     # gets a list of children to add to this node
@@ -46,7 +46,14 @@ class Node:
         return self.children
 
     # replaces at changepos the char with the given replacement in the parentstring
-    # the tuple looks like (heuristic value, change_position, position for new observation, string used for replacement)
+    # the tuple looks like
+    #   (heuristic value,
+    #   change_position,
+    #   position for new observation,
+    #   string used for replacement,
+    #   list of comparisons made on the char under observation,
+    #   string that was used as input for the parent which lead to the production of this Node)
+    #
     # the heursitic value is currently not used but might be in future
     def get_substituted_string(self):
         return self.parentstring[0:self.change[1]] + self.change[3] + self.parentstring[self.change[1] + 1:]
@@ -84,7 +91,7 @@ def exec_code_object(code, env):
     # start with the random input "A"
     next_input = "A"
     # start with some dummy node, the given substitution has no further effect
-    current_Node = Node(None, (0, 0, 0, 'B'), next_input)
+    current_Node = Node(None, (0, 0, 0, 'B', [], 'A'))
     node_list = []
 
     already_seen = set()
@@ -116,7 +123,7 @@ def exec_code_object(code, env):
             # create nodes from the retrieved replacements
             node_list_append = list()
             for input in next_inputs:
-                node_list_append.append(Node(current_Node, input, next_input))
+                node_list_append.append(Node(current_Node, input))
 
             # random.shuffle(node_list_append)
             # filter for inputs, that do not lead to success, i.e. inputs that are already correct and inputs that
