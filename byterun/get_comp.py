@@ -310,7 +310,7 @@ class GetComparisons(VirtualMachine):
             match_pos = current.find(to_match)
             # from the current input cut out whatever was tried to be matched and replace it later with what was
             # tried to be matched (i.e. a representative of the regex), therefore the A is still included
-            new_current = current[match_pos:max(match_pos, len(current) - len(string))] + "A" + current[max(match_pos, len(current) - len(string)) + len(string) + 1:]
+            new_current = current[ :match_pos] + "A" + current[match_pos + len(to_match):]
             pos = match_pos
             self.append_new_input(next_inputs, pos, string, new_current, comparisons)
         return next_inputs
